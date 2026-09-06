@@ -1,0 +1,580 @@
+local success, Rayfield = pcall(function()  
+    return loadstring(game:HttpGet('https://raw.githubusercontent.com/SiLeNTxXx/Rayfield/main/source'))()  
+end)  
+  
+if not success then  
+    warn("Khong tai duoc Rayfield: " .. tostring(Rayfield))  
+    return  
+end  
+  
+local DrawingSuccess, Drawing = pcall(function()  
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Stefanuk12/Drawing/main/Drawing.lua"))()  
+end)  
+  
+if not DrawingSuccess then  
+    Drawing = nil  
+end  
+  
+local Window = Rayfield:CreateWindow({  
+    Name = "Tien Dat X Hub",  
+    LoadingTitle = "Tien Dat X Hub",  
+    LoadingSubtitle = "by Tien Dat",  
+    ConfigurationSaving = { Enabled = false },  
+    Discord = { Enabled = false },  
+    KeySystem = false  
+})  
+  
+local Players = game:GetService("Players")  
+local RunService = game:GetService("RunService")  
+local UserInputService = game:GetService("UserInputService")  
+local Camera = workspace.CurrentCamera  
+local LocalPlayer = Players.LocalPlayer  
+  
+local AimEnabled = false  
+local AimInRangeOnly = false  
+local AimDistance = 100  
+local AimPart = "Head"  
+local POVEnabled = false  
+local POVRadius = 100  
+local ESPBoxEnabled = false  
+local ESPLineEnabled = false  
+local ESPCountEnabled = false  
+local SpeedValue = 16  
+local JumpValue = 50  
+local FlyEnabled = false  
+local NoclipEnabled = false  
+local KillAuraEnabled = false  
+local KillAuraRange = 20  
+local KillAuraDelay = 0.5  
+local KillAuraPart = "Head"  
+local LastAttackTime = 0  
+local KillAllRange = 100  
+local FlyBodyVelocity = nil  
+local FlyBodyGyro = nil  
+local FlyKeys = {W = false, A = false, S = false, D = false, Space = false, LeftShift = false}  
+  
+local function getCharacter()  
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()  
+end  
+  
+local function getHumanoid()  
+    local char = getCharacter()  
+    return char and char:FindFirstChildOfClass("Humanoid")  
+end  
+  
+local function getRootPart()  
+    local char = getCharacter()  
+    return char and char:FindFirstChild("HumanoidRootPart")  
+end  
+  
+local function getClosestEnemy(maxDistance)  
+    local closest = nil  
+    local shortest = maxDistance or math.huge  
+    local localChar = getCharacter()  
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")  
+    if not localRoot then return nil end  
+    for _, player in ipairs(Players:GetPlayers()) do  
+        if player ~= LocalPlayer then  
+            local char = player.Character  
+            if char then  
+                local humanoid = char:FindFirstChildOfClass("Humanoid")  
+                local root = char:FindFirstChild("HumanoidRootPart")  
+                if humanoid and humanoid.Health > 0 and root then  
+                    local distance = (localRoot.Position - root.Position).Magnitude  
+                    if distance < shortest then  
+                        shortest = distance  
+                        closest = root  
+                    end  
+                end  
+            end  
+        end  
+    end  
+    return closest, shortest  
+end  
+  
+local function getTargetPart(character, partName)  
+    if partName == "Head" then return character:FindFirstChild("Head") end  
+    if partName == "Torso" then return character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso") end  
+    return character:FindFirstChild("HumanoidRootPart")  
+end  
+  
+local AimTab = Window:CreateTab("Aim", 4483362458)  
+local VisualTab = Window:CreateTab("Visual", 4483362458)  
+local PlayerTab = Window:CreateTab("Player", 4483362458)  
+local KillAuraTab = Window:CreateTab("Kill Aura", 4483362458)  
+local InfoTab = Window:CreateTab("Info", 4483362458)  
+  
+AimTab:CreateToggle({  
+    Name = "Aim ke dich gan nhat",  
+    CurrentValue = false,  
+    Flag = "AimToggle",  
+    Callback = function(Value) AimEnabled = Value end  
+})  
+  
+AimTab:CreateToggle({  
+    Name = "Aim khi co tam",  
+    CurrentValue = false,  
+    Flag = "AimInRange",  
+    Callback = function(Value) AimInRangeOnly = Value end  
+})  
+  
+AimTab:CreateSlider({  
+    Name = "Khoang cach toi da",  
+    Range = {1, 500},  
+    Increment = 1,  
+    Suffix = "studs",  
+    CurrentValue = 100,  
+    Flag = "AimDistance",  
+    Callback = function(Value) AimDistance = Value end  
+})  
+  
+AimTab:CreateDropdown({  
+    Name = "Bo phan Aim",  
+    Options = {"Head", "Torso", "HumanoidRootPart"},  
+    CurrentOption = "Head",  
+    Flag = "AimPart",  
+    Callback = function(Value) AimPart = Value end  
+})  
+  
+AimTab:CreateToggle({  
+    Name = "Vong tron POV",  
+    CurrentValue = false,  
+    Flag = "POVToggle",  
+    Callback = function(Value) POVEnabled = Value end  
+})  
+  
+AimTab:CreateSlider({  
+    Name = "Kich thuoc POV",  
+    Range = {10, 500},  
+    Increment = 1,  
+    Suffix = "px",  
+    CurrentValue = 100,  
+    Flag = "POVRadius",  
+    Callback = function(Value) POVRadius = Value end  
+})  
+  
+if Drawing then  
+    local PlayerCountDrawing = Drawing.new("Text")  
+    PlayerCountDrawing.Text = "Player: 0"  
+    PlayerCountDrawing.Size = 20  
+    PlayerCountDrawing.Color = Color3.fromRGB(255, 255, 255)  
+    PlayerCountDrawing.Center = true  
+    PlayerCountDrawing.Outline = true  
+    PlayerCountDrawing.OutlineColor = Color3.new(0, 0, 0)  
+    PlayerCountDrawing.Position = Vector2.new(Camera.ViewportSize.X / 2, 10)  
+    PlayerCountDrawing.Visible = false  
+  
+    local POVCircle = Drawing.new("Circle")  
+    POVCircle.Thickness = 2  
+    POVCircle.Color = Color3.fromRGB(255, 255, 255)  
+    POVCircle.Filled = false  
+    POVCircle.Transparency = 1  
+    POVCircle.Visible = false  
+  
+    local CrosshairH = Drawing.new("Line")  
+    CrosshairH.Thickness = 1  
+    CrosshairH.Color = Color3.fromRGB(255, 0, 0)  
+    CrosshairH.Transparency = 1  
+    CrosshairH.Visible = false  
+  
+    local CrosshairV = Drawing.new("Line")  
+    CrosshairV.Thickness = 1  
+    CrosshairV.Color = Color3.fromRGB(255, 0, 0)  
+    CrosshairV.Transparency = 1  
+    CrosshairV.Visible = false  
+  
+    local espCache = {}  
+  
+    local function clearESP()  
+        for _, drawings in pairs(espCache) do  
+            for _, d in pairs(drawings) do  
+                if d.Remove then d:Remove() end  
+            end  
+        end  
+        espCache = {}  
+    end  
+  
+    local function createESPForPlayer(player)  
+        local drawings = {}  
+        if ESPBoxEnabled then  
+            local box = Drawing.new("Square")  
+            box.Thickness = 2  
+            box.Color = Color3.fromRGB(255, 0, 0)  
+            box.Filled = false  
+            box.Transparency = 1  
+            drawings.Box = box  
+        end  
+        if ESPLineEnabled then  
+            local line = Drawing.new("Line")  
+            line.Thickness = 1  
+            line.Color = Color3.new(0, 0, 0)  
+            line.Transparency = 1  
+            drawings.Line = line  
+        end  
+        espCache[player] = drawings  
+    end  
+  
+    local function updateESP()  
+        clearESP()  
+        if not (ESPBoxEnabled or ESPLineEnabled) then return end  
+        for _, player in ipairs(Players:GetPlayers()) do  
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then  
+                if not espCache[player] then createESPForPlayer(player) end  
+                local drawings = espCache[player]  
+                local root = player.Character.HumanoidRootPart  
+                local head = player.Character:FindFirstChild("Head")  
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")  
+                if humanoid and humanoid.Health > 0 and root and head then  
+                    local pos, onScreen = Camera:WorldToViewportPoint(root.Position)  
+                    if drawings.Box then  
+                        if onScreen then  
+                            local size = (head.Position - root.Position).Magnitude  
+                            local height = size * 2.5  
+                            local width = size * 1.5  
+                            drawings.Box.Size = Vector2.new(width, height)  
+                            drawings.Box.Position = Vector2.new(pos.X - width/2, pos.Y - height/2)  
+                            drawings.Box.Visible = true  
+                        else  
+                            drawings.Box.Visible = false  
+                        end  
+                    end  
+                    if drawings.Line then  
+                        if onScreen then  
+                            drawings.Line.From = Vector2.new(pos.X, Camera.ViewportSize.Y)  
+                            drawings.Line.To = Vector2.new(pos.X, pos.Y)  
+                            drawings.Line.Visible = true  
+                        else  
+                            drawings.Line.Visible = false  
+                        end  
+                    end  
+                else  
+                    if drawings.Box then drawings.Box.Visible = false end  
+                    if drawings.Line then drawings.Line.Visible = false end  
+                end  
+            end  
+        end  
+    end  
+  
+    local function updatePOVCircle()  
+        if POVEnabled then  
+            local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)  
+            POVCircle.Position = center  
+            POVCircle.Radius = POVRadius  
+            POVCircle.Visible = true  
+            CrosshairH.Visible = true  
+            CrosshairV.Visible = true  
+            CrosshairH.From = Vector2.new(center.X - POVRadius, center.Y)  
+            CrosshairH.To = Vector2.new(center.X + POVRadius, center.Y)  
+            CrosshairV.From = Vector2.new(center.X, center.Y - POVRadius)  
+            CrosshairV.To = Vector2.new(center.X, center.Y + POVRadius)  
+        else  
+            POVCircle.Visible = false  
+            CrosshairH.Visible = false  
+            CrosshairV.Visible = false  
+        end  
+    end  
+  
+    local function updatePlayerCount()  
+        local count = #Players:GetPlayers()  
+        PlayerCountLabel:Set("Player: " .. count)  
+        if ESPCountEnabled then  
+            PlayerCountDrawing.Position = Vector2.new(Camera.ViewportSize.X / 2, 10)  
+            PlayerCountDrawing.Text = "Player: " .. count  
+        end  
+    end  
+end  
+  
+VisualTab:CreateToggle({  
+    Name = "ESP Box",  
+    CurrentValue = false,  
+    Flag = "ESPBox",  
+    Callback = function(Value) ESPBoxEnabled = Value end  
+})  
+  
+VisualTab:CreateToggle({  
+    Name = "ESP Line",  
+    CurrentValue = false,  
+    Flag = "ESPLine",  
+    Callback = function(Value) ESPLineEnabled = Value end  
+})  
+  
+VisualTab:CreateToggle({  
+    Name = "Hien thi so nguoi choi",  
+    CurrentValue = false,  
+    Flag = "ESPCount",  
+    Callback = function(Value)  
+        ESPCountEnabled = Value  
+        if Drawing and PlayerCountDrawing then PlayerCountDrawing.Visible = Value end  
+    end  
+})  
+  
+local PlayerCountLabel = VisualTab:CreateLabel("Player: 0")  
+  
+PlayerTab:CreateSlider({  
+    Name = "Tang Speed",  
+    Range = {20, 500},  
+    Increment = 1,  
+    Suffix = "WalkSpeed",  
+    CurrentValue = 16,  
+    Flag = "SpeedSlider",  
+    Callback = function(Value)  
+        SpeedValue = Value  
+        local humanoid = getHumanoid()  
+        if humanoid then humanoid.WalkSpeed = Value end  
+    end  
+})  
+  
+PlayerTab:CreateSlider({  
+    Name = "Tang Nhay",  
+    Range = {50, 500},  
+    Increment = 1,  
+    Suffix = "JumpPower",  
+    CurrentValue = 50,  
+    Flag = "JumpSlider",  
+    Callback = function(Value)  
+        JumpValue = Value  
+        local humanoid = getHumanoid()  
+        if humanoid then humanoid.JumpPower = Value end  
+    end  
+})  
+  
+PlayerTab:CreateToggle({  
+    Name = "Fly",  
+    CurrentValue = false,  
+    Flag = "FlyToggle",  
+    Callback = function(Value)  
+        FlyEnabled = Value  
+        if FlyEnabled then  
+            enableFly()  
+        else  
+            disableFly()  
+        end  
+    end  
+})  
+  
+PlayerTab:CreateToggle({  
+    Name = "Noclip",  
+    CurrentValue = false,  
+    Flag = "NoclipToggle",  
+    Callback = function(Value)  
+        NoclipEnabled = Value  
+        if NoclipEnabled then  
+            enableNoclip()  
+        else  
+            disableNoclip()  
+        end  
+    end  
+})  
+  
+KillAuraTab:CreateToggle({  
+    Name = "Bat Kill Aura",  
+    CurrentValue = false,  
+    Flag = "KillAuraToggle",  
+    Callback = function(Value) KillAuraEnabled = Value end  
+})  
+  
+KillAuraTab:CreateSlider({  
+    Name = "Pham vi",  
+    Range = {1, 100},  
+    Increment = 1,  
+    Suffix = "studs",  
+    CurrentValue = 20,  
+    Flag = "KillAuraRange",  
+    Callback = function(Value) KillAuraRange = Value end  
+})  
+  
+KillAuraTab:CreateSlider({  
+    Name = "Toc do",  
+    Range = {0.1, 3},  
+    Increment = 0.1,  
+    Suffix = "s",  
+    CurrentValue = 0.5,  
+    Flag = "KillAuraDelay",  
+    Callback = function(Value) KillAuraDelay = Value end  
+})  
+  
+KillAuraTab:CreateDropdown({  
+    Name = "Bo phan",  
+    Options = {"Head", "Torso", "HumanoidRootPart"},  
+    CurrentOption = "Head",  
+    Flag = "KillAuraPart",  
+    Callback = function(Value) KillAuraPart = Value end  
+})  
+  
+KillAuraTab:CreateButton({  
+    Name = "Kill All",  
+    Callback = function()  
+        killAllEnemies()  
+    end  
+})  
+  
+KillAuraTab:CreateSlider({  
+    Name = "Pham vi Kill All",  
+    Range = {1, 500},  
+    Increment = 1,  
+    Suffix = "studs",  
+    CurrentValue = 100,  
+    Flag = "KillAllRange",  
+    Callback = function(Value) KillAllRange = Value end  
+})  
+  
+local PlayerInfoLabel = InfoTab:CreateLabel("Ten: " .. LocalPlayer.Name)  
+local ProfileInfoLabel = InfoTab:CreateLabel("UserID: " .. LocalPlayer.UserId)  
+local HealthLabel = InfoTab:CreateLabel("Mau: 0/0")  
+local SpeedLabel = InfoTab:CreateLabel("Toc do: 0")  
+local JumpLabel = InfoTab:CreateLabel("Do nhay: 0")  
+local TimeLabel = InfoTab:CreateLabel("Thoi gian: ")  
+  
+function enableFly()  
+    local root = getRootPart()  
+    local humanoid = getHumanoid()  
+    if root and humanoid then  
+        FlyBodyVelocity = Instance.new("BodyVelocity")  
+        FlyBodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)  
+        FlyBodyVelocity.Velocity = Vector3.new(0, 0, 0)  
+        FlyBodyVelocity.Parent = root  
+        FlyBodyGyro = Instance.new("BodyGyro")  
+        FlyBodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)  
+        FlyBodyGyro.D = 100  
+        FlyBodyGyro.P = 9000  
+        FlyBodyGyro.Parent = root  
+        humanoid.PlatformStand = true  
+    end  
+end  
+  
+function disableFly()  
+    if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end  
+    if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end  
+    local humanoid = getHumanoid()  
+    if humanoid then humanoid.PlatformStand = false end  
+end  
+  
+function updateFly()  
+    if not FlyEnabled or not FlyBodyVelocity or not FlyBodyGyro then return end  
+    local root = getRootPart()  
+    if not root then return end  
+    local direction = Vector3.new(0, 0, 0)  
+    if FlyKeys.W then direction = direction + Vector3.new(0, 0, -1) end  
+    if FlyKeys.S then direction = direction + Vector3.new(0, 0, 1) end  
+    if FlyKeys.A then direction = direction + Vector3.new(-1, 0, 0) end  
+    if FlyKeys.D then direction = direction + Vector3.new(1, 0, 0) end  
+    if FlyKeys.Space then direction = direction + Vector3.new(0, 1, 0) end  
+    if FlyKeys.LeftShift then direction = direction + Vector3.new(0, -1, 0) end  
+    if direction.Magnitude > 0 then direction = direction.Unit end  
+    FlyBodyVelocity.Velocity = direction * 50  
+    FlyBodyGyro.CFrame = Camera.CFrame  
+end  
+  
+function enableNoclip()  
+    local char = getCharacter()  
+    if char then  
+        for _, part in ipairs(char:GetDescendants()) do  
+            if part:IsA("BasePart") then part.CanCollide = false end  
+        end  
+    end  
+end  
+  
+function disableNoclip()  
+    local char = getCharacter()  
+    if char then  
+        for _, part in ipairs(char:GetDescendants()) do  
+            if part:IsA("BasePart") then part.CanCollide = true end  
+        end  
+    end  
+end  
+  
+function attackNearestEnemy()  
+    if not KillAuraEnabled then return end  
+    local now = tick()  
+    if now - LastAttackTime < KillAuraDelay then return end  
+    local localChar = getCharacter()  
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")  
+    if not localRoot then return end  
+    local closestEnemy = nil  
+    local closestDistance = KillAuraRange  
+    for _, player in ipairs(Players:GetPlayers()) do  
+        if player ~= LocalPlayer then  
+            local char = player.Character  
+            if char then  
+                local humanoid = char:FindFirstChildOfClass("Humanoid")  
+                local root = char:FindFirstChild("HumanoidRootPart")  
+                if humanoid and humanoid.Health > 0 and root then  
+                    local dist = (localRoot.Position - root.Position).Magnitude  
+                    if dist <= closestDistance then  
+                        closestDistance = dist  
+                        closestEnemy = root  
+                    end  
+                end  
+            end  
+        end  
+    end  
+    if closestEnemy then  
+        local targetPart = getTargetPart(closestEnemy.Parent, KillAuraPart)  
+        if targetPart then  
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)  
+        end  
+        local humanoid = getHumanoid()  
+        if humanoid then  
+            local tool = humanoid:FindFirstChildOfClass("Tool") or localChar:FindFirstChildOfClass("Tool")  
+            if tool then  
+                tool:Activate()  
+                wait(0.1)  
+                tool:Deactivate()  
+            end  
+        end  
+        LastAttackTime = tick()  
+    end  
+end  
+  
+function killAllEnemies()  
+    local localChar = getCharacter()  
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")  
+    if not localRoot then return end  
+    for _, player in ipairs(Players:GetPlayers()) do  
+        if player ~= LocalPlayer then  
+            local char = player.Character  
+            if char then  
+                local humanoid = char:FindFirstChildOfClass("Humanoid")  
+                local root = char:FindFirstChild("HumanoidRootPart")  
+                if humanoid and humanoid.Health > 0 and root then  
+                    local distance = (localRoot.Position - root.Position).Magnitude  
+                    if distance <= KillAllRange then  
+                        humanoid.Health = 0  
+                    end  
+                end  
+            end  
+        end  
+    end  
+end  
+  
+RunService.RenderStepped:Connect(function()  
+    if AimEnabled then  
+        local enemy, distance = getClosestEnemy(AimDistance)  
+        if enemy then  
+            if not AimInRangeOnly or (AimInRangeOnly and distance <= AimDistance) then  
+                local targetPart = getTargetPart(enemy.Parent, AimPart)  
+                if targetPart then  
+                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)  
+                end  
+            end  
+        end  
+    end  
+    if Drawing then  
+        updateESP()  
+        updatePOVCircle()  
+        updatePlayerCount()  
+    end  
+    updateFly()  
+    attackNearestEnemy()  
+    local humanoid = getHumanoid()  
+    local root = getRootPart()  
+    if humanoid and root then  
+        HealthLabel:Set(string.format("Mau: %.0f/%.0f", humanoid.Health, humanoid.MaxHealth))  
+        SpeedLabel:Set("Toc do: " .. math.floor(humanoid.WalkSpeed))  
+        JumpLabel:Set("Do nhay: " .. math.floor(humanoid.JumpPower))  
+    end  
+end)  
+  
+UserInputService.InputBegan:Connect(function(input, gameProcessed)  
+    if FlyEnabled then  
+        if input.KeyCode == Enum.KeyCode.W then FlyKeys.W = true en
